@@ -20,7 +20,7 @@ inputs.duxtibber = {
   url = "github:antonjah/duxtibber";
   inputs.nixpkgs.follows = "nixpkgs";
 };
-
+q
 # in homeManagerConfiguration modules:
 duxtibber.homeModules.default
 ```
@@ -33,6 +33,7 @@ programs.duxtibber = {
   tokenFile = "~/.config/tibber/token"; # file with only your token, from developer.tibber.com
   priceArea = "SE3";                    # used when there is no token
   priceUnit = "minor";                  # "major" = SEK/kWh, "minor" = öre/kWh (øre, ct)
+  showUnit = true;                      # "200 öre" instead of "200" in the bar and popup
   refreshMinutes = 15;                  # 5, 15, 30 or 60
 };
 ```

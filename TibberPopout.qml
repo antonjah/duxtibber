@@ -28,6 +28,10 @@ PopoutComponent {
         return Tibber.fmtPrice(v, plugin.minor)
     }
 
+    function fmtU(v) {
+        return fmt(v) + (plugin.showUnit ? " " + Tibber.unitShort(model.currency, plugin.minor) : "")
+    }
+
     function hhmm(ms) {
         return Qt.formatTime(new Date(ms), "HH:mm")
     }
@@ -188,7 +192,7 @@ PopoutComponent {
                 StyledText {
                     visible: !!popout.cur && !popout.model.spot
                     text: popout.cur
-                        ? I18n.trFor("duxTibber", "Energy %1 · Tax %2").arg(popout.fmt(popout.cur.energy)).arg(popout.fmt(popout.cur.tax))
+                        ? I18n.trFor("duxTibber", "Energy %1 · Tax %2").arg(popout.fmtU(popout.cur.energy)).arg(popout.fmtU(popout.cur.tax))
                         : ""
                     color: Theme.surfaceVariantText
                     font.pixelSize: Theme.fontSizeSmall
@@ -256,7 +260,7 @@ PopoutComponent {
                 label: I18n.trFor("duxTibber", "Lowest")
                 icon: "trending_down"
                 accent: Theme.success
-                value: popout.stats && popout.stats.min ? popout.fmt(popout.stats.min.total) : ""
+                value: popout.stats && popout.stats.min ? popout.fmtU(popout.stats.min.total) : ""
                 sub: popout.stats && popout.stats.min ? popout.span(popout.stats.min) : ""
             }
 
@@ -265,7 +269,7 @@ PopoutComponent {
                 label: I18n.trFor("duxTibber", "Average")
                 icon: "show_chart"
                 accent: Theme.primary
-                value: popout.stats ? popout.fmt(popout.stats.avg) : ""
+                value: popout.stats ? popout.fmtU(popout.stats.avg) : ""
                 sub: I18n.trFor("duxTibber", "Today")
             }
 
@@ -274,7 +278,7 @@ PopoutComponent {
                 label: I18n.trFor("duxTibber", "Highest")
                 icon: "trending_up"
                 accent: Theme.error
-                value: popout.stats && popout.stats.max ? popout.fmt(popout.stats.max.total) : ""
+                value: popout.stats && popout.stats.max ? popout.fmtU(popout.stats.max.total) : ""
                 sub: popout.stats && popout.stats.max ? popout.span(popout.stats.max) : ""
             }
         }
@@ -291,7 +295,7 @@ PopoutComponent {
                 label: I18n.trFor("duxTibber", "Cheapest ahead")
                 icon: "schedule"
                 accent: Theme.success
-                value: popout.stats && popout.stats.cheapestUpcoming ? popout.fmt(popout.stats.cheapestUpcoming.total) : ""
+                value: popout.stats && popout.stats.cheapestUpcoming ? popout.fmtU(popout.stats.cheapestUpcoming.total) : ""
                 sub: popout.stats && popout.stats.cheapestUpcoming ? popout.when(popout.stats.cheapestUpcoming) : ""
             }
 

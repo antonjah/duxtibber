@@ -21,6 +21,7 @@ PluginComponent {
     readonly property string apiUrl: pluginData.apiUrl || Tibber.API_URL
     readonly property string priceArea: setting("priceArea", "")
     readonly property bool minor: setting("priceUnit", "") === "minor"
+    readonly property bool showUnit: String(setting("showUnit", true)) !== "false"
 
     // Declared settings (e.g. written by home-manager) win over the settings page.
     property var declared: ({})
@@ -62,7 +63,9 @@ PluginComponent {
     property real now: Date.now()
     readonly property var cur: st.model ? Tibber.current(st.model.prices, now) : null
     readonly property color levelColor: !cur && st.error ? Theme.error : Theme[Tibber.levelColor(cur ? cur.level : "")]
-    readonly property string priceText: cur ? Tibber.fmtPrice(cur.total, minor) : (st.error ? "!" : "…")
+    readonly property string priceNumber: cur ? Tibber.fmtPrice(cur.total, minor) : (st.error ? "!" : "…")
+    readonly property string unitText: cur && showUnit ? Tibber.unitShort(st.model.currency, minor) : ""
+    readonly property string priceText: priceNumber + (unitText ? " " + unitText : "")
 
     FileView {
         id: tokenView
@@ -216,9 +219,17 @@ PluginComponent {
             }
 
             StyledText {
-                text: root.priceText
+                text: root.priceNumber
                 font.pixelSize: root.textSize
                 color: Theme.widgetTextColor
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            StyledText {
+                visible: root.unitText !== ""
+                text: root.unitText
+                font.pixelSize: root.textSize - 2
+                color: Theme.surfaceVariantText
                 anchors.horizontalCenter: parent.horizontalCenter
             }
         }

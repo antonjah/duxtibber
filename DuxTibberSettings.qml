@@ -68,6 +68,13 @@ PluginSettings {
         defaultValue: "major"
     }
 
+    ToggleSetting {
+        settingKey: "showUnit"
+        label: I18n.trFor("duxTibber", "Show unit after prices")
+        description: I18n.trFor("duxTibber", "Append the unit to prices in the bar and the popup (200 öre instead of 200)")
+        defaultValue: true
+    }
+
     SelectionSetting {
         settingKey: "refreshMinutes"
         label: I18n.trFor("duxTibber", "Refresh interval")

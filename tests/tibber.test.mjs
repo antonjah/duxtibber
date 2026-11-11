@@ -114,6 +114,8 @@ test("unit names the minor unit per currency and falls back to the code", () => 
     assert.equal(T.unit("NOK", true), "øre/kWh");
     assert.equal(T.unit("EUR", true), "ct/kWh");
     assert.equal(T.unit("GBP", true), "GBP/kWh");
+    assert.equal(T.unitShort("SEK", true), "öre");
+    assert.equal(T.unitShort("SEK", false), "SEK");
 });
 
 test("spotUrl builds the per-day area URL and rejects unknown areas", () => {

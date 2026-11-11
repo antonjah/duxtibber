@@ -102,14 +102,15 @@ scene stale | grep -Eq 'error="Invalid token"' || fail 'stale scene should repor
 scene stale | grep -q 'model=192' || fail 'stale scene should keep the last data'
 scene error | grep -Eq '^pill=! .*error="Invalid token" model=0' || fail "error scene unexpected: $(scene error)"
 scene twoscreens | grep -q 'twinSame=true' || fail 'two instances do not share state'
-scene spot | grep -Eq '^pill=[0-9]+ .*demo=false error="" model=192' || fail "spot scene should show whole-ore prices for today and tomorrow: $(scene spot)"
+scene spot | grep -Eq '^pill=[0-9]+ öre level=.*demo=false error="" model=192' || fail "spot scene should show whole-ore prices with the unit for today and tomorrow: $(scene spot)"
+scene nounit | grep -Eq '^pill=[0-9]+ level=' || fail "nounit scene should show the bare number: $(scene nounit)"
 scene spotno | grep -Eq '^pill=[0-9]+\.[0-9][0-9] .*demo=false error="" model=24 ' || fail "spotno scene should show hourly prices for today only: $(scene spotno)"
 scene declared | grep -Eq '^pill=[0-9]+ .*demo=false error="" model=192' || fail "declared scene: config.json should override the settings page (SE3, whole ore): $(scene declared)"
 
 # demo, token, negative, stale (good + expired), error, twoscreens: one request each; each spot scene: today and tomorrow.
-[ "$(wc -l < "$out/requests.log")" = 13 ] || fail "Expected 13 requests, got $(wc -l < "$out/requests.log"): two screens must share one fetch"
+[ "$(wc -l < "$out/requests.log")" = 15 ] || fail "Expected 15 requests, got $(wc -l < "$out/requests.log"): two screens must share one fetch"
 
-for n in demo token negative stale error twoscreens spot spotno declared; do
+for n in demo token negative stale error twoscreens spot spotno declared nounit; do
     [ -s "$out/$n.png" ] || fail "Missing $n.png"
 done
 printf '%s\n' "Render checks passed. Images are in $out."

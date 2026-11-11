@@ -26,7 +26,8 @@ ShellRoot {
         { name: "twoscreens", token: "good", twin: true },
         { name: "spot", token: "none", area: "SE3", minor: true },
         { name: "spotno", token: "none", area: "NO1" },
-        { name: "declared", token: "none", declared: { priceArea: "SE3", priceUnit: "minor", refreshMinutes: 30 } }
+        { name: "declared", token: "none", declared: { priceArea: "SE3", priceUnit: "minor", refreshMinutes: 30 } },
+        { name: "nounit", token: "none", area: "SE3", minor: true, nounit: true }
     ]
     property int sceneIndex: -1
 
@@ -155,6 +156,7 @@ ShellRoot {
         SettingsData.setPluginSetting(pid, "tokenFile", tokenDir + "/" + scene.token)
         SettingsData.setPluginSetting(pid, "priceArea", scene.area || "")
         SettingsData.setPluginSetting(pid, "priceUnit", scene.minor ? "minor" : "major")
+        SettingsData.setPluginSetting(pid, "showUnit", !scene.nounit)
         declaredFile.setText(JSON.stringify(scene.declared || {}))
         spawn()
         if (scene.twin)

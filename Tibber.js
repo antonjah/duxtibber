@@ -82,8 +82,12 @@ function fmtPrice(total, minor) {
     return minor ? String(Math.round(total * 100)) : total.toFixed(2)
 }
 
+function unitShort(currency, minor) {
+    return minor ? MINOR[currency] || currency : currency
+}
+
 function unit(currency, minor) {
-    return (minor ? MINOR[currency] || currency : currency) + "/kWh"
+    return unitShort(currency, minor) + "/kWh"
 }
 
 // Price areas without a token: the country picks the free spot-price API and the currency.

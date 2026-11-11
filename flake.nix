@@ -35,13 +35,14 @@
             homeId = opt lib.types.str "Tibber home ID; null uses the first home with a subscription.";
             priceArea = opt (lib.types.enum [ "SE1" "SE2" "SE3" "SE4" "NO1" "NO2" "NO3" "NO4" "NO5" ]) "Free spot prices for this area when no token is present.";
             priceUnit = opt (lib.types.enum [ "major" "minor" ]) "Whole currency (major) or minor unit such as öre (minor).";
+            showUnit = opt lib.types.bool "Append the unit to prices in the bar and popup (default true).";
             refreshMinutes = opt (lib.types.enum [ 5 15 30 60 ]) "Minutes between price refreshes.";
           };
 
           config = lib.mkIf cfg.enable {
             programs.dank-material-shell.plugins.duxTibber.src = plugin pkgs;
             xdg.configFile."tibber/config.json".text = builtins.toJSON (
-              lib.filterAttrs (_: v: v != null) { inherit (cfg) tokenFile homeId priceArea priceUnit refreshMinutes; }
+              lib.filterAttrs (_: v: v != null) { inherit (cfg) tokenFile homeId priceArea priceUnit showUnit refreshMinutes; }
             );
           };
         };
