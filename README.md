@@ -1,0 +1,49 @@
+# duxtibber
+
+Electricity prices in your [Dux Shell](https://github.com/duxlabs-dev/dux-shell) bar. The current price sits in the bar; click it for today's and tomorrow's prices, lowest/average/highest, the cheapest slot ahead, and your last 24 h of consumption.
+
+![screenshot](docs/screenshot.png)
+
+Three data modes:
+
+- **Tibber token:** your own home, prices and consumption.
+- **Price area (no token):** free spot prices for SE1-SE4 or NO1-NO5.
+- **Neither:** Tibber's demo data.
+
+## Install (home-manager flakes)
+
+Add the input and module:
+
+```nix
+# flake.nix
+inputs.duxtibber = {
+  url = "github:antonjah/duxtibber";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# in homeManagerConfiguration modules:
+duxtibber.homeModules.default
+```
+
+Configure (all options except `enable` are optional):
+
+```nix
+programs.duxtibber = {
+  enable = true;
+  tokenFile = "~/.config/tibber/token"; # file with only your token, from developer.tibber.com
+  priceArea = "SE3";                    # used when there is no token
+  priceUnit = "minor";                  # "major" = SEK/kWh, "minor" = öre/kWh (øre, ct)
+  refreshMinutes = 15;                  # 5, 15, 30 or 60
+};
+```
+
+Add the widget to your bar:
+
+```nix
+programs.dank-material-shell.settings.barConfigs = [{
+  # ...
+  rightWidgets = [ { id = "duxTibber"; enabled = true; } ];
+}];
+```
+
+Rebuild, then enable the plugin once in Dux: Settings > Plugins > Scan > Tibber.
