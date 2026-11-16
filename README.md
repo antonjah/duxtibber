@@ -53,6 +53,8 @@ Rebuild, then enable the plugin once in Dux: Settings > Plugins > Scan > Tibber.
 
 Shows your connected car's charge in the popup. Off by default.
 
+![car tile](docs/car-tile.png)
+
 ```nix
 programs.duxtibber.car = {
   enable = true;
