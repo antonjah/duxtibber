@@ -47,7 +47,9 @@ programs.dank-material-shell.settings.barConfigs = [{
 }];
 ```
 
-Rebuild, then enable the plugin once in Dux: Settings > Plugins > Scan > Tibber.
+Rebuild, restart Dux, then enable the plugin once: Settings > Plugins > Scan > Tibber.
+
+After updating the plugin, restart Dux again. "Reload plugin" keeps showing the old files.
 
 ## Car (optional)
 
@@ -58,9 +60,15 @@ Shows your connected car's charge in the popup. Off by default.
 ```nix
 programs.duxtibber.car = {
   enable = true;
-  clientId = "...";   # from data-api.tibber.com/clients/manage
   # name = "Enyaq";   # which car, if you have several
 };
 ```
 
-Open the popup after rebuilding: it walks you through creating the Tibber API client and logging in once. The client secret goes in `~/.config/tibber/data-api-secret`.
+Rebuild and restart Dux, then do this once. The popup shows the same steps and moves on by itself.
+
+1. Create an API client at https://data-api.tibber.com/clients/manage. Any name, tick the vehicle and home permissions, and set the redirect address to exactly `http://localhost:8765/callback` (nothing listens there). Tibber shows the client secret only once.
+2. Save the secret alone in a file: `~/.config/tibber/data-api-secret`.
+3. Enter the client ID in Settings > Plugins > Tibber > Car > Client ID and press Enter (or set `car.clientId = "...";` in Nix).
+4. In the popup, click "Open Tibber login" and approve. The browser then says it can't connect. That is expected: copy the whole address from its address bar, go back to the popup and click "Use the address I copied".
+
+The car tile appears. Tokens are kept in `~/.local/state/duxtibber` and refreshed automatically.

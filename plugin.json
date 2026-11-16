@@ -2,7 +2,7 @@
     "id": "duxTibber",
     "name": "Tibber",
     "description": "Tibber electricity prices in the bar. Add a token to also see your home's consumption.",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "author": "Anton Andersson",
     "type": "widget",
     "capabilities": ["dankbar-widget"],

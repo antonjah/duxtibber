@@ -114,7 +114,7 @@ PluginSettings {
     StringSetting {
         settingKey: "carClientId"
         label: I18n.trFor("duxTibber", "Client ID")
-        description: I18n.trFor("duxTibber", "From data-api.tibber.com/clients/manage (redirect address http://localhost:8765/callback)")
+        description: I18n.trFor("duxTibber", "From data-api.tibber.com/clients/manage (redirect address http://localhost:8765/callback). Press Enter to save")
         placeholder: ""
         defaultValue: ""
     }
@@ -130,7 +130,7 @@ PluginSettings {
     StringSetting {
         settingKey: "carRedirect"
         label: I18n.trFor("duxTibber", "Address after login")
-        description: I18n.trFor("duxTibber", "After approving the Tibber login the browser shows a page that cannot connect. Paste its address here; it is used once and then cleared")
+        description: I18n.trFor("duxTibber", "After approving the Tibber login the browser shows a page that cannot connect. Paste its address here and press Enter; it is used once and then cleared")
         placeholder: "http://localhost:8765/callback?code=…"
         defaultValue: ""
     }

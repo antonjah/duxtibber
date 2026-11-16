@@ -18,9 +18,12 @@ fi
 work=$(mktemp -d)
 server_pid=
 xvfb_pid=
+qs_pid=
 cleanup() {
-    [ -n "$server_pid" ] && kill "$server_pid" 2>/dev/null
-    [ -n "$xvfb_pid" ] && kill "$xvfb_pid" 2>/dev/null
+    # Every step must run even when an earlier one fails (set -e would otherwise stop at the first kill).
+    for pid in "$qs_pid" "$server_pid" "$xvfb_pid"; do
+        [ -n "$pid" ] && { kill "$pid" 2>/dev/null || true; }
+    done
     rm -rf "$work"
 }
 trap cleanup EXIT HUP INT TERM
@@ -76,8 +79,32 @@ env -u WAYLAND_DISPLAY -u NIRI_SOCKET -u DMS_SOCKET -u QT_QPA_PLATFORMTHEME \
     XDG_RUNTIME_DIR="$work/runtime" XDG_CONFIG_HOME="$work/config" XDG_CACHE_HOME="$work/cache" \
     XDG_STATE_HOME="$work/state" XDG_DATA_HOME="$work/data" \
     DUXTIBBER_DIR="$repo" DUXTIBBER_SHOTS="$out" DUXTIBBER_TOKENS="$work/tokens" DUXTIBBER_API="http://127.0.0.1:$port/" \
-    timeout 120 dbus-run-session -- qs --log-rules 'scene.warning=true;qml.warning=true;js.warning=true' -p "$work/harness" \
-    > "$out/quickshell.log" 2>&1 || true
+    timeout 300 dbus-run-session -- qs --log-rules 'scene.warning=true;qml.warning=true;js.warning=true' -p "$work/harness" \
+    > "$out/quickshell.log" 2>&1 &
+qs_pid=$!
+
+# Never silent: print each scene as it finishes and a heartbeat every 10 s.
+start=$(date +%s)
+if [ -n "${DUXTIBBER_ONLY:-}" ]; then
+    total=$(printf '%s\n' $DUXTIBBER_ONLY | wc -l)
+else
+    total=$(grep -c '^        { name: "' "$repo/tests/render/shell.qml")
+fi
+seen=0
+beat=0
+while kill -0 "$qs_pid" 2>/dev/null; do
+    done_now=$(grep -c 'TIBBER [A-Za-z0-9]* pill=' "$out/quickshell.log" 2>/dev/null || true)
+    while [ "$seen" -lt "${done_now:-0}" ]; do
+        seen=$((seen + 1))
+        name=$(grep 'TIBBER [A-Za-z0-9]* pill=' "$out/quickshell.log" | sed -n "${seen}p" | sed 's/.*TIBBER \([A-Za-z0-9]*\) pill=.*/\1/')
+        printf '[%3ds] %d/%d %s\n' "$(($(date +%s) - start))" "$seen" "$total" "$name"
+    done
+    beat=$((beat + 1))
+    [ $((beat % 10)) -eq 0 ] && printf '[%3ds] still running, %d/%d scenes done\n' "$(($(date +%s) - start))" "$seen" "$total"
+    sleep 1
+done
+wait "$qs_pid" || true
+printf 'Render finished in %ds\n' "$(($(date +%s) - start))"
 cp "$work/requests.log" "$out/requests.log" 2>/dev/null || true
 
 fail() {
@@ -89,6 +116,13 @@ fail() {
 grep -q 'TIBBER done' "$out/quickshell.log" || fail 'The render did not finish.'
 if grep -E "TIBBER ERROR|$repo/[^ ]*: .*(Error|is not defined|Cannot read|Unable to assign|ReferenceError|TypeError)" "$out/quickshell.log" >&2; then
     fail 'QML errors in plugin files.'
+fi
+
+# A filtered run only has some scenes, so the full set of assertions does not apply.
+if [ -n "${DUXTIBBER_ONLY:-}" ]; then
+    grep -E 'TIBBER [A-Za-z0-9]+ pill=' "$out/quickshell.log" | sed 's/.*TIBBER //'
+    printf '%s\n' "Filtered run: assertions skipped. Images are in $out."
+    exit 0
 fi
 
 scene() { sed -n "s/.*TIBBER $1 //p" "$out/quickshell.log"; }
@@ -114,6 +148,9 @@ carscene carOff 'carstate=off car=none'
 carscene carSetup 'carstate=setup car=none'
 carscene carNoSecret 'carstate=setup car=none'
 carscene carConnect 'carstate=connect car=none tok=none'
+carscene carSecretLate 'carstate=connect car=none tok=none'
+carscene carClipboard 'carstate=car car=Škoda Enyaq/70/80/256 tok=r1 redirect=cleared'
+carscene carEmptyClip 'carstate=connect car=none tok=none redirect=cleared msg=Nothing copied yet'
 carscene carPaste 'carstate=car car=Škoda Enyaq/70/80/256 tok=r1 redirect=cleared'
 carscene carBadPaste 'carstate=connect car=none tok=none redirect=cleared msg=Tibber rejected the login'
 carscene carRefresh 'carstate=car car=Škoda Enyaq/70/80/256 tok=r-next'
@@ -124,8 +161,8 @@ scene demo | grep -q 'carstate=off ' || fail 'scenes without the car tile enable
 
 # demo, token, negative, stale (good + expired), error, twoscreens: one request each; each area scene: 3 past days, today, tomorrow;
 # car scenes: the demo price plus, when tokens exist, token exchange/refresh (1) and homes + devices + 3 device details (5).
-[ "$(wc -l < "$out/requests.log")" = 67 ] || fail "Expected 67 requests, got $(wc -l < "$out/requests.log"): two screens must share one fetch"
-for n in demo token negative stale error twoscreens spot spotno declared nounit car carOff carSetup carNoSecret carConnect carPaste carBadPaste carRefresh carRevoked carSelect carMiss; do
+[ "$(wc -l < "$out/requests.log")" = 76 ] || fail "Expected 76 requests, got $(wc -l < "$out/requests.log"): two screens must share one fetch"
+for n in demo token negative stale error twoscreens spot spotno declared nounit car carOff carSetup carNoSecret carConnect carSecretLate carClipboard carEmptyClip carPaste carBadPaste carRefresh carRevoked carSelect carMiss; do
     [ -s "$out/$n.png" ] || fail "Missing $n.png"
 done
 printf '%s\n' "Render checks passed. Images are in $out."

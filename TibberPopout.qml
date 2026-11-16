@@ -327,6 +327,17 @@ PopoutComponent {
             carName: popout.plugin.carName
             found: popout.plugin.car.found
             secretFile: popout.plugin.carSecretFile
+            clientIdOk: popout.plugin.carClientId !== ""
+            secretOk: popout.plugin.carHasSecret
+            busy: popout.plugin.car.busy > 0
+            onUseAddress: text => popout.plugin.exchangeCar(text, false)
+        }
+
+        Timer {
+            interval: popout.plugin.recheckMs
+            repeat: true
+            running: popout.plugin.carState === "setup"
+            onTriggered: popout.plugin.recheckCar()
         }
 
         StyledText {

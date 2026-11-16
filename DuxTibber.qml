@@ -174,7 +174,7 @@ PluginComponent {
         // A request stuck for over a minute is treated as dead.
         if (s.fetching && Date.now() - s.fetching < 60000)
             return
-        shared.set(Object.assign({}, s, { fetching: Date.now() }))
+        shared.set(Object.assign({}, s, { fetching: Date.now(), key: fetchKey }))
 
         const token = readToken()
         if (token === "" && priceArea)
@@ -194,6 +194,8 @@ PluginComponent {
     readonly property string carDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/duxtibber"
     readonly property string carAuthUrl: carClientId ? Tibber.authUrl(carClientId, Tibber.CAR_STATE, authApiUrl) : ""
     property bool carHasSecret: false
+    // How often the open popout re-checks for a newly created secret file (a test seam).
+    property int recheckMs: 2000
 
     PluginGlobalVar {
         id: carShared
@@ -262,18 +264,27 @@ PluginComponent {
         setCar({ tokens: null, data: null, found: [], revoked: false, fetched: false, error: "", message: "", nextAt: 0 })
     }
 
-    // The pasted browser address holds a one-time code; it is exchanged once and then removed from the settings.
-    onCarRedirectChanged: if (carRedirect !== "") exchangeCar()
+    // The browser address holds a one-time code. It comes from the card's clipboard button or from the
+    // settings page (then it is cleared again once used).
+    onCarRedirectChanged: if (carRedirect !== "") exchangeCar(carRedirect, true)
 
-    function exchangeCar() {
+    // Creating the secret file while the popout is open must be noticed without waiting for the minute timer.
+    function recheckCar() {
+        secretView.reload()
+    }
+
+    function exchangeCar(address, fromSettings) {
         hydrateCar()
         if (carShared.value.busy && Date.now() - carShared.value.busy < 60000)
             return
         const finish = patch => {
             setCar(Object.assign({ busy: 0 }, patch))
-            PluginService.savePluginData(pluginId, "carRedirect", "")
+            if (fromSettings)
+                PluginService.savePluginData(pluginId, "carRedirect", "")
         }
-        const r = Tibber.parseRedirect(carRedirect, Tibber.CAR_STATE)
+        if (!String(address || "").trim())
+            return finish({ message: I18n.trFor("duxTibber", "Nothing copied yet. Copy the whole address from the browser's address bar first.") })
+        const r = Tibber.parseRedirect(address, Tibber.CAR_STATE)
         if (r.error)
             return finish({ message: r.error })
         const secret = readSecret()
@@ -313,7 +324,7 @@ PluginComponent {
         if (s.fetching && Date.now() - s.fetching < 60000)
             return
         const done = patch => setCar(Object.assign({ fetching: 0, nextAt: Date.now() + 5 * 60000 }, patch))
-        setCar({ fetching: Date.now() })
+        setCar({ fetching: Date.now(), key: carKey })
 
         const run = (tokens, retried) => {
             const headers = { "Authorization": "Bearer " + tokens.access_token }
@@ -359,8 +370,10 @@ PluginComponent {
     }
 
     readonly property string carKey: showCar + "|" + carClientId + "|" + carName
+    // Only a key different from the one the last fetch used needs a new fetch; startup loading must not cause one.
     onCarKeyChanged: {
-        setCar({ nextAt: 0 })
+        if (carShared.value.key !== carKey)
+            setCar({ nextAt: 0 })
         keyDebounce.restart()
     }
 
@@ -379,7 +392,8 @@ PluginComponent {
     // The delay lets FileView load a changed token path before it is read.
     readonly property string fetchKey: tokenFile + "|" + homeId + "|" + priceArea
     onFetchKeyChanged: {
-        shared.set(Object.assign({}, shared.value, { nextAt: 0 }))
+        if (shared.value.key !== fetchKey)
+            shared.set(Object.assign({}, shared.value, { nextAt: 0 }))
         keyDebounce.restart()
     }
 
