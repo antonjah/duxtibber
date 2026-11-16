@@ -20,7 +20,7 @@ inputs.duxtibber = {
   url = "github:antonjah/duxtibber";
   inputs.nixpkgs.follows = "nixpkgs";
 };
-q
+
 # in homeManagerConfiguration modules:
 duxtibber.homeModules.default
 ```
@@ -38,16 +38,25 @@ programs.duxtibber = {
 };
 ```
 
-Add the widget to your bar:
+Add the widget to your bar. The plugin does not show up until you do this too: installing it does not place it. Add the entry to the widget list of your existing bar (`leftWidgets`, `centerWidgets` or `rightWidgets`); its place in the list is its place in the bar.
 
 ```nix
 programs.dank-material-shell.settings.barConfigs = [{
-  # ...
-  rightWidgets = [ { id = "duxTibber"; enabled = true; } ];
+  # ...your existing bar settings...
+  rightWidgets = [
+    # ...your existing widgets...
+    { id = "duxTibber"; enabled = true; }
+  ];
 }];
 ```
 
-Rebuild, restart Dux, then enable the plugin once: Settings > Plugins > Scan > Tibber.
+If your bar is not managed by Nix, add it in Dux instead: Settings > Bar widgets.
+
+Rebuild and restart Dux, then enable the plugin once: Settings > Plugins, change the filter so disabled plugins are listed, and switch Tibber on. Or run `dms ipc call plugins enable duxTibber`.
+
+`programs.duxtibber.enable` only installs the plugin. Turning it on is a separate switch in Dux, kept out of Nix on purpose: declaring it there would make home-manager overwrite your other plugins' settings. Until it is enabled, the bar widget stays empty.
+
+So three things are needed: the module (installs it), the bar entry (places it) and the switch in Dux (turns it on).
 
 After updating the plugin, restart Dux again. "Reload plugin" keeps showing the old files.
 
