@@ -19,6 +19,7 @@ def build(token):
     r = json.loads(json.dumps(base))
     home = r["data"]["viewer"]["homes"][0]
     info = home["currentSubscription"]["priceInfo"]
+    home["currentSubscription"]["priceInfoRange"] = {"nodes": [{"total": 3.0}] * 72}
     midnight = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     for i, p in enumerate(info["today"]):
         p["startsAt"] = iso(midnight + timedelta(minutes=15 * i))
@@ -44,7 +45,7 @@ class H(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/v1/prices/(\d{4})/(\d\d)-(\d\d)_((SE|NO)\d)\.json", self.path)
         offset = (date(*map(int, m.groups()[:3])) - date.today()).days if m else None
         # Like the real services: Sweden publishes tomorrow already, Norway does not in this mock.
-        if offset not in (0, 1) or (offset == 1 and m.group(5) == "NO"):
+        if offset not in (-3, -2, -1, 0, 1) or (offset == 1 and m.group(5) == "NO"):
             self.send_response(404)
             self.end_headers()
             return
@@ -54,7 +55,7 @@ class H(BaseHTTPRequestHandler):
         midnight = datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=offset)
         body = [
             {
-                f"{cur}_per_kWh": round(totals[i * step // 15] * (0.7 if offset else 1), 5),
+                f"{cur}_per_kWh": round(totals[i * step // 15] * (0.7 if offset == 1 else 1), 5),
                 "time_start": (midnight + timedelta(minutes=step * i)).isoformat(timespec="seconds"),
                 "time_end": (midnight + timedelta(minutes=step * (i + 1))).isoformat(timespec="seconds"),
             }

@@ -146,6 +146,31 @@ test("parseSpot uses the area currency, derives levels from the average and flag
     assert.equal(T.parseSpot("SE3", spotDay(11, [1, 1])).tomorrowReady, false);
 });
 
+test("parseSpot levels use Tibber's thresholds against the trailing 72 h average", () => {
+    const flat = (day) => spotDay(day, Array.from({ length: 24 }, () => 1));
+    const now = new Date(2026, 10, 11, 12).getTime();
+    const today = Array.from({ length: 24 }, () => 1);
+    [today[12], today[13], today[14], today[15], today[16]] = [0.5, 0.85, 1, 1.2, 1.5];
+    const m = T.parseSpot("SE3", spotDay(11, today), null, [flat(8), flat(9), flat(10)], now);
+    assert.equal(m.baseline, 1);
+    assert.deepEqual([12, 13, 14, 15, 16].map((h) => m.prices[h].level), [
+        "VERY_CHEAP", "CHEAP", "NORMAL", "EXPENSIVE", "VERY_EXPENSIVE",
+    ]);
+});
+
+test("parseSpot without history falls back to today's average", () => {
+    const m = T.parseSpot("SE3", spotDay(11, [1, 1, 1, 3]), null, [], new Date(2026, 10, 11, 0).getTime());
+    assert.equal(m.baseline, 1.5);
+    assert.equal(m.prices[3].level, "VERY_EXPENSIVE");
+});
+
+test("parse takes the baseline from Tibber's 72 h range, or 0 when absent", () => {
+    assert.equal(T.parse(demo).baseline, 0);
+    const r = clone(demo);
+    r.data.viewer.homes[0].currentSubscription.priceInfoRange = { nodes: [{ total: 1 }, { total: 2 }] };
+    assert.equal(T.parse(r).baseline, 1.5);
+});
+
 test("parseSpot picks the NOK field for Norwegian areas and rejects bad input", () => {
     const no = [{ NOK_per_kWh: 1.5, time_start: new Date(2026, 10, 11, 0).toISOString() }];
     const m = T.parseSpot("NO2", no);

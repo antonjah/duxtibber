@@ -107,9 +107,8 @@ scene nounit | grep -Eq '^pill=[0-9]+ level=' || fail "nounit scene should show 
 scene spotno | grep -Eq '^pill=[0-9]+\.[0-9][0-9] .*demo=false error="" model=24 ' || fail "spotno scene should show hourly prices for today only: $(scene spotno)"
 scene declared | grep -Eq '^pill=[0-9]+ .*demo=false error="" model=192' || fail "declared scene: config.json should override the settings page (SE3, whole ore): $(scene declared)"
 
-# demo, token, negative, stale (good + expired), error, twoscreens: one request each; each spot scene: today and tomorrow.
-[ "$(wc -l < "$out/requests.log")" = 15 ] || fail "Expected 15 requests, got $(wc -l < "$out/requests.log"): two screens must share one fetch"
-
+# demo, token, negative, stale (good + expired), error, twoscreens: one request each; each area scene: 3 past days, today, tomorrow.
+[ "$(wc -l < "$out/requests.log")" = 27 ] || fail "Expected 27 requests, got $(wc -l < "$out/requests.log"): two screens must share one fetch"
 for n in demo token negative stale error twoscreens spot spotno declared nounit; do
     [ -s "$out/$n.png" ] || fail "Missing $n.png"
 done

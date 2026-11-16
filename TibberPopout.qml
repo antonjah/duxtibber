@@ -16,7 +16,7 @@ PopoutComponent {
     readonly property var stats: model ? Tibber.stats(model.prices, plugin.now) : null
     readonly property var yTicks: model ? Tibber.yTicks(Tibber.range(model.prices).lo, Tibber.range(model.prices).hi, plugin.minor) : []
     readonly property string unit: model ? Tibber.unit(model.currency, plugin.minor) : ""
-    readonly property int deltaPct: cur && stats && stats.avg > 0 ? Math.round((cur.total / stats.avg - 1) * 100) : 0
+    readonly property int deltaPct: cur && model && model.baseline > 0 ? Math.round((cur.total / model.baseline - 1) * 100) : 0
 
     headerText: I18n.trFor("duxTibber", "Electricity price")
     detailsText: model
@@ -169,7 +169,7 @@ PopoutComponent {
                 }
 
                 Row {
-                    visible: !!popout.stats && popout.stats.avg > 0
+                    visible: !!popout.model && popout.model.baseline > 0
                     spacing: Theme.spacingXS
 
                     DIcon {
@@ -181,8 +181,8 @@ PopoutComponent {
 
                     StyledText {
                         text: (popout.deltaPct >= 0
-                            ? I18n.trFor("duxTibber", "%1% above today's average")
-                            : I18n.trFor("duxTibber", "%1% below today's average")).arg(Math.abs(popout.deltaPct))
+                            ? I18n.trFor("duxTibber", "%1% above the 3-day average")
+                            : I18n.trFor("duxTibber", "%1% below the 3-day average")).arg(Math.abs(popout.deltaPct))
                         color: Theme.surfaceText
                         font.pixelSize: Theme.fontSizeSmall
                         anchors.verticalCenter: parent.verticalCenter
@@ -240,7 +240,7 @@ PopoutComponent {
                     prices: popout.model ? popout.model.prices : []
                     cur: popout.cur
                     now: popout.plugin.now
-                    avg: popout.stats ? popout.stats.avg : 0
+                    avg: popout.model && popout.model.baseline > 0 ? popout.model.baseline : (popout.stats ? popout.stats.avg : 0)
                     yTicks: popout.yTicks
                     xTicks: popout.model ? Tibber.ticks(popout.model.prices) : []
                     tomorrowLabel: I18n.trFor("duxTibber", "Tomorrow")

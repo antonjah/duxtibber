@@ -130,16 +130,40 @@ PluginComponent {
     }
 
     // Free spot prices for the chosen area; tomorrow is optional until it is published (~13:00).
+    // The previous 3 days give Tibber's trailing-average baseline; past days never change, so they are kept.
     function fetchSpot() {
         const base = pluginData.apiUrl ? pluginData.apiUrl.replace(/\/$/, "") : undefined
         const d = new Date()
-        const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
-        request("GET", Tibber.spotUrl(priceArea, d, base), {}, null, (status, today) => {
-            if (status !== 200)
-                return result(false, status, null)
-            request("GET", Tibber.spotUrl(priceArea, next, base), {}, null, (status2, tomorrow) =>
-                result(false, 200, Tibber.parseSpot(priceArea, today, status2 === 200 ? tomorrow : null)))
-        })
+        const url = n => Tibber.spotUrl(priceArea, new Date(d.getFullYear(), d.getMonth(), d.getDate() + n), base)
+        const cache = shared.value.hist || ({})
+        const hist = ({})
+        const past = []
+
+        const loadToday = () => {
+            shared.set(Object.assign({}, shared.value, { hist: hist }))
+            request("GET", url(0), {}, null, (status, today) => {
+                if (status !== 200)
+                    return result(false, status, null)
+                request("GET", url(1), {}, null, (status2, tomorrow) =>
+                    result(false, 200, Tibber.parseSpot(priceArea, today, status2 === 200 ? tomorrow : null, past, Date.now())))
+            })
+        }
+
+        const loadPast = n => {
+            if (n === 0)
+                return loadToday()
+            const u = url(n)
+            const keep = text => {
+                hist[u] = text
+                past.push(text)
+                loadPast(n + 1)
+            }
+            if (cache[u] !== undefined)
+                return keep(cache[u])
+            request("GET", u, {}, null, (status, text) => status === 200 ? keep(text) : loadPast(n + 1))
+        }
+
+        loadPast(-3)
     }
 
     function refresh() {

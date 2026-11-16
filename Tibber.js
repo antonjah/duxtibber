@@ -6,8 +6,15 @@ var API_URL = "https://api.tibber.com/v1-beta/gql"
 
 var PRICE = "total energy tax startsAt level currency"
 var QUERY = "query { viewer { homes { id appNickname timeZone currentSubscription {"
-    + " priceInfo(resolution: QUARTER_HOURLY) { today { " + PRICE + " } tomorrow { " + PRICE + " } } }"
+    + " priceInfo(resolution: QUARTER_HOURLY) { today { " + PRICE + " } tomorrow { " + PRICE + " } }"
+    + " priceInfoRange(resolution: HOURLY, last: 72) { nodes { total } } }"
     + " consumption(resolution: HOURLY, last: 24) { nodes { from to consumption cost currency } } } } }"
+
+var WINDOW_MS = 72 * 3600000
+
+function mean(list) {
+    return list.length ? list.reduce(function (s, v) { return s + v }, 0) / list.length : 0
+}
 
 function slot(p, day) {
     return { t: Date.parse(p.startsAt), total: p.total, energy: p.energy, tax: p.tax, level: p.level, day: day }
@@ -37,10 +44,12 @@ function parse(body, homeId) {
         return { error: "No prices" }
 
     var cons = ((home.consumption && home.consumption.nodes) || []).filter(function (n) { return n.consumption !== null })
+    var range = (home.currentSubscription.priceInfoRange && home.currentSubscription.priceInfoRange.nodes) || []
     return {
         home: { id: home.id, name: home.appNickname || home.id },
         currency: (info.today[0] || info.tomorrow[0]).currency,
         prices: prices,
+        baseline: mean(range.map(function (n) { return n.total })),
         tomorrowReady: !!(info.tomorrow && info.tomorrow.length),
         consumption: {
             kwh: cons.reduce(function (s, n) { return s + n.consumption }, 0),
@@ -117,16 +126,16 @@ function spotUrl(area, date, base) {
         + pad(date.getMonth() + 1) + "-" + pad(date.getDate()) + "_" + area + ".json"
 }
 
-// Tibber's own definition: price relative to the average (<=60% very cheap ... >=140% very expensive).
-function levelOf(total, avg) {
-    if (avg <= 0)
+// Tibber's own definition: price relative to the trailing 3-day average (<=60% very cheap ... >=140% very expensive).
+function levelOf(total, baseline) {
+    if (baseline <= 0)
         return "NORMAL"
-    var r = total / avg
+    var r = total / baseline
     return r <= 0.6 ? "VERY_CHEAP" : r <= 0.9 ? "CHEAP" : r < 1.15 ? "NORMAL" : r < 1.4 ? "EXPENSIVE" : "VERY_EXPENSIVE"
 }
 
-// Same model as parse(), from the spot-price JSON for today and (when published) tomorrow.
-function parseSpot(area, todayBody, tomorrowBody) {
+// Same model as parse(), from spot-price JSON: pastBodies are the previous days, tomorrowBody is optional.
+function parseSpot(area, todayBody, tomorrowBody, pastBodies, now) {
     var a = AREAS[area]
     if (!a)
         return { error: "Unknown price area" }
@@ -144,15 +153,21 @@ function parseSpot(area, todayBody, tomorrowBody) {
     }
     var today = conv(todayBody, "today")
     var tomorrow = tomorrowBody ? conv(tomorrowBody, "tomorrow") : []
+    var past = []
+    ;(pastBodies || []).forEach(function (b) { past = past.concat(conv(b, "past")) })
+    var t0 = now === undefined ? Date.now() : now
+    var window = past.concat(today).filter(function (p) { return p.t >= t0 - WINDOW_MS && p.t < t0 })
+    // Without history (first day, API down) the best available baseline is today's own average.
+    var baseline = mean((window.length ? window : today).map(function (p) { return p.total }))
     var prices = today.concat(tomorrow).sort(function (x, y) { return x.t - y.t })
     if (!prices.length)
         return { error: "No prices" }
-    var avg = prices.reduce(function (s, p) { return s + p.total }, 0) / prices.length
-    prices.forEach(function (p) { p.level = levelOf(p.total, avg) })
+    prices.forEach(function (p) { p.level = levelOf(p.total, baseline) })
     return {
         home: { id: area, name: area },
         currency: a.currency,
         prices: prices,
+        baseline: baseline,
         tomorrowReady: tomorrow.length > 0,
         consumption: { kwh: 0, cost: 0, hours: 0 },
         spot: true
