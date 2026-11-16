@@ -87,4 +87,51 @@ PluginSettings {
         ]
         defaultValue: "15"
     }
+
+    StyledText {
+        width: parent.width
+        text: I18n.trFor("duxTibber", "Car")
+        color: Theme.surfaceText
+        font.pixelSize: Theme.fontSizeLarge
+        font.weight: Font.Bold
+    }
+
+    ToggleSetting {
+        settingKey: "showCar"
+        label: I18n.trFor("duxTibber", "Show my car")
+        description: I18n.trFor("duxTibber", "Show the charge of your connected car in the popup. This needs a free Tibber API client; the popup guides you through it.")
+        defaultValue: false
+    }
+
+    StringSetting {
+        settingKey: "carName"
+        label: I18n.trFor("duxTibber", "Which car")
+        description: I18n.trFor("duxTibber", "Name, model or ID of the car to show. Leave empty to use the first car in your account")
+        placeholder: ""
+        defaultValue: ""
+    }
+
+    StringSetting {
+        settingKey: "carClientId"
+        label: I18n.trFor("duxTibber", "Client ID")
+        description: I18n.trFor("duxTibber", "From data-api.tibber.com/clients/manage (redirect address http://localhost:8765/callback)")
+        placeholder: ""
+        defaultValue: ""
+    }
+
+    StringSetting {
+        settingKey: "carSecretFile"
+        label: I18n.trFor("duxTibber", "Client secret file")
+        description: I18n.trFor("duxTibber", "Path to a file containing only the client secret; the secret itself is never stored in these settings")
+        placeholder: "~/.config/tibber/data-api-secret"
+        defaultValue: ""
+    }
+
+    StringSetting {
+        settingKey: "carRedirect"
+        label: I18n.trFor("duxTibber", "Address after login")
+        description: I18n.trFor("duxTibber", "After approving the Tibber login the browser shows a page that cannot connect. Paste its address here; it is used once and then cleared")
+        placeholder: "http://localhost:8765/callback?code=…"
+        defaultValue: ""
+    }
 }

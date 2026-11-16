@@ -12,7 +12,7 @@
         pkgs:
         pkgs.runCommand "duxtibber" { } ''
           mkdir $out
-          for f in plugin.json DuxTibber.qml DuxTibberSettings.qml TibberPopout.qml PriceChart.qml StatTile.qml Tibber.js; do
+          for f in plugin.json DuxTibber.qml DuxTibberSettings.qml TibberPopout.qml PriceChart.qml StatTile.qml CarTile.qml CarSetup.qml LinkButton.qml Tibber.js; do
             cp ${self}/$f $out/$f
           done
         '';
@@ -37,12 +37,24 @@
             priceUnit = opt (lib.types.enum [ "major" "minor" ]) "Whole currency (major) or minor unit such as öre (minor).";
             showUnit = opt lib.types.bool "Append the unit to prices in the bar and popup (default true).";
             refreshMinutes = opt (lib.types.enum [ 5 15 30 60 ]) "Minutes between price refreshes.";
+            car = {
+              enable = opt lib.types.bool "Show your connected car's charge in the popup (default false). The popup guides you through the one-time Tibber login.";
+              name = opt lib.types.str "Name, model or ID of the car to show; null uses the first car in your account.";
+              clientId = opt lib.types.str "Client ID of your Tibber Data API client (data-api.tibber.com/clients/manage, redirect address http://localhost:8765/callback).";
+              clientSecretFile = opt lib.types.str "Path to a file with only the client secret; keep it out of the nix store. null uses ~/.config/tibber/data-api-secret.";
+            };
           };
 
           config = lib.mkIf cfg.enable {
             programs.dank-material-shell.plugins.duxTibber.src = plugin pkgs;
             xdg.configFile."tibber/config.json".text = builtins.toJSON (
-              lib.filterAttrs (_: v: v != null) { inherit (cfg) tokenFile homeId priceArea priceUnit showUnit refreshMinutes; }
+              lib.filterAttrs (_: v: v != null) {
+                inherit (cfg) tokenFile homeId priceArea priceUnit showUnit refreshMinutes;
+                showCar = cfg.car.enable;
+                carName = cfg.car.name;
+                carClientId = cfg.car.clientId;
+                carSecretFile = cfg.car.clientSecretFile;
+              }
             );
           };
         };

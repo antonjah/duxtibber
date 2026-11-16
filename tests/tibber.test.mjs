@@ -171,6 +171,133 @@ test("parse takes the baseline from Tibber's 72 h range, or 0 when absent", () =
     assert.equal(T.parse(r).baseline, 1.5);
 });
 
+const enyaq = {
+    info: { name: "Enyaq", brand: "Škoda", model: "Enyaq" },
+    attributes: [{ id: "isOnline", value: true }],
+    capabilities: [
+        { id: "storage.stateOfCharge", value: 70, unit: "%" },
+        { id: "storage.targetStateOfCharge", value: 80, unit: "%" },
+        { id: "range.remaining", value: 256000, unit: "m" },
+        { id: "connector.status", value: "disconnected", unit: null },
+        { id: "charging.status", value: "idle", unit: null },
+    ],
+    status: { lastSeen: "2026-11-16T10:04:41.3134738+01:00" },
+};
+const dummy = { info: { name: "Gäst", brand: "Tibber", model: "Dummy" }, capabilities: [{ id: "storage.stateOfCharge", value: 50 }] };
+const charger = { info: { name: "go-e", brand: "GoE", model: "Gemini" }, capabilities: [{ id: "charging.status", value: "idle" }] };
+
+test("pickCar defaults to the first real car, converts range to km and reads plug and charge state", () => {
+    const { car: c, found } = T.pickCar([dummy, charger, enyaq], "");
+    assert.deepEqual([...found], ["Enyaq"]);
+    assert.equal(c.brand, "Škoda");
+    assert.equal(c.name, "Enyaq");
+    assert.equal(c.soc, 70);
+    assert.equal(c.target, 80);
+    assert.equal(c.rangeKm, 256);
+    assert.equal(c.plugged, false);
+    assert.equal(c.charging, false);
+    assert.equal(c.online, true);
+    assert.equal(c.lastSeen, Date.parse("2026-11-16T10:04:41.3134738+01:00"));
+});
+
+test("pickCar sees a plugged-in charging car, accepts JSON strings, and finds no car without one", () => {
+    const live = clone(enyaq);
+    live.capabilities[3].value = "connected";
+    live.capabilities[4].value = "charging";
+    const c = T.pickCar([JSON.stringify(live)], "").car;
+    assert.equal(c.plugged, true);
+    assert.equal(c.charging, true);
+    assert.equal(T.pickCar([dummy, charger], "").car, null);
+    assert.equal(T.pickCar([], "").car, null);
+});
+
+test("pickCar matches by name, model or id ignoring case, and never falls back when a name is set", () => {
+    const other = { id: "d-2", info: { name: "Family car", brand: "Volvo", model: "EX30" }, capabilities: [{ id: "storage.stateOfCharge", value: 40 }] };
+    const both = [{ ...enyaq, id: "d-1" }, other];
+    assert.equal(T.pickCar(both, "").car.name, "Enyaq");
+    assert.equal(T.pickCar(both, " family CAR ").car.soc, 40);
+    assert.equal(T.pickCar(both, "ex30").car.soc, 40);
+    assert.equal(T.pickCar(both, "d-2").car.soc, 40);
+    const miss = T.pickCar(both, "tesla");
+    assert.equal(miss.car, null);
+    assert.deepEqual([...miss.found], ["Enyaq", "Family car"]);
+});
+
+test("authUrl carries the client, redirect, scopes and state", () => {
+    const u = T.authUrl("abc", "st8");
+    assert.ok(u.startsWith("https://thewall.tibber.com/connect/authorize?"));
+    for (const part of ["response_type=code", "client_id=abc", "state=st8", "redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback", "data-api-vehicles-read", "offline_access"])
+        assert.ok(u.includes(part), part);
+    assert.ok(!u.includes("data-api-prices-read"));
+});
+
+test("parseRedirect returns the code only for a matching state and explains every failure", () => {
+    const ok = "http://localhost:8765/callback?code=C0DE-1&state=st8&session_state=x&iss=https%3A%2F%2Fthewall.tibber.com";
+    assert.equal(T.parseRedirect(ok, "st8").code, "C0DE-1");
+    assert.equal(T.parseRedirect("  " + ok + "\n", "st8").code, "C0DE-1");
+    assert.match(T.parseRedirect(ok, "other").error, /started elsewhere/);
+    assert.match(T.parseRedirect(ok, "").error, /started elsewhere/);
+    assert.match(T.parseRedirect("http://localhost:8765/callback", "st8").error, /whole address/);
+    assert.match(T.parseRedirect("http://localhost:8765/callback?state=st8", "st8").error, /no login code/);
+    assert.equal(T.parseRedirect("http://localhost:8765/callback?error=access_denied&error_description=No+thanks&state=st8", "st8").error, "No thanks");
+    assert.equal(T.parseRedirect("http://localhost:8765/callback?error=access_denied&state=st8", "st8").error, "The login was cancelled");
+});
+
+test("tokenBody builds the code and refresh requests", () => {
+    const code = new URLSearchParams(T.tokenBody("cid", "s e/cret", { code: "C1" }));
+    assert.equal(code.get("grant_type"), "authorization_code");
+    assert.equal(code.get("code"), "C1");
+    assert.equal(code.get("redirect_uri"), "http://localhost:8765/callback");
+    assert.equal(code.get("client_secret"), "s e/cret");
+    const refresh = new URLSearchParams(T.tokenBody("cid", "sec", { refresh: "R1" }));
+    assert.equal(refresh.get("grant_type"), "refresh_token");
+    assert.equal(refresh.get("refresh_token"), "R1");
+    assert.equal(refresh.get("code"), null);
+});
+
+test("tokensFrom stores expiry, keeps the old refresh token when none is returned and flags revoked grants", () => {
+    const t = T.tokensFrom({ access_token: "A", refresh_token: "R", expires_in: 3600 }, 1000);
+    assert.equal(t.access_token, "A");
+    assert.equal(t.refresh_token, "R");
+    assert.equal(t.expires_at, 1000 + 3600000);
+    assert.equal(T.tokensFrom(JSON.stringify({ access_token: "B" }), 0, { refresh_token: "OLD" }).refresh_token, "OLD");
+    const bad = T.tokensFrom({ error: "invalid_grant", error_description: "expired" }, 0);
+    assert.equal(bad.revoked, true);
+    assert.equal(bad.error, "expired");
+    assert.equal(T.tokensFrom({ error: "invalid_client" }, 0).revoked, false);
+    assert.match(T.tokensFrom({ error: "invalid_client" }, 0).error, /client ID or secret/);
+    assert.match(T.tokensFrom({ error: "invalid_grant" }, 0).error, /click Open Tibber login/);
+    assert.equal(T.tokensFrom({ error: "weird" }, 0).error, "weird");
+    assert.equal(T.tokensFrom("garbage", 0).error, "Bad response");
+});
+
+test("needsRefresh asks five minutes ahead and when tokens are missing", () => {
+    assert.equal(T.needsRefresh(null, 0), true);
+    assert.equal(T.needsRefresh({ access_token: "A", expires_at: 400000 }, 0), false);
+    assert.equal(T.needsRefresh({ access_token: "A", expires_at: 299999 }, 0), true);
+});
+
+test("carStatus walks through setup, connect, car, reconnect, notfound, nocar, error and loading", () => {
+    const base = { enabled: true, clientId: "c", hasSecret: true, tokens: { refresh_token: "R" }, found: [], fetched: true };
+    assert.equal(T.carStatus({ ...base, enabled: false }), "off");
+    assert.equal(T.carStatus({ ...base, clientId: "" }), "setup");
+    assert.equal(T.carStatus({ ...base, hasSecret: false }), "setup");
+    assert.equal(T.carStatus({ ...base, tokens: null }), "connect");
+    assert.equal(T.carStatus({ ...base, revoked: true }), "reconnect");
+    assert.equal(T.carStatus({ ...base, car: {} }), "car");
+    assert.equal(T.carStatus({ ...base, name: "x", found: ["Enyaq"] }), "notfound");
+    assert.equal(T.carStatus(base), "nocar");
+    assert.equal(T.carStatus({ ...base, error: "HTTP 500" }), "error");
+    assert.equal(T.carStatus({ ...base, fetched: false }), "loading");
+});
+
+test("daysAgo counts local calendar days", () => {
+    const now = new Date(2026, 10, 16, 1).getTime();
+    assert.equal(T.daysAgo(new Date(2026, 10, 16, 0, 5).getTime(), now), 0);
+    assert.equal(T.daysAgo(new Date(2026, 10, 15, 23, 55).getTime(), now), 1);
+    assert.equal(T.daysAgo(new Date(2026, 10, 13, 12).getTime(), now), 3);
+});
+
 test("parseSpot picks the NOK field for Norwegian areas and rejects bad input", () => {
     const no = [{ NOK_per_kWh: 1.5, time_start: new Date(2026, 10, 11, 0).toISOString() }];
     const m = T.parseSpot("NO2", no);

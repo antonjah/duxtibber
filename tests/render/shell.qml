@@ -27,7 +27,18 @@ ShellRoot {
         { name: "spot", token: "none", area: "SE3", minor: true },
         { name: "spotno", token: "none", area: "NO1" },
         { name: "declared", token: "none", declared: { priceArea: "SE3", priceUnit: "minor", refreshMinutes: 30 } },
-        { name: "nounit", token: "none", area: "SE3", minor: true, nounit: true }
+        { name: "nounit", token: "none", area: "SE3", minor: true, nounit: true },
+        { name: "car", token: "none", car: { show: true, clientId: "cid-test", tokens: { access: "carok", refresh: "r-ok", fresh: true } } },
+        { name: "carOff", token: "none", car: { show: false, clientId: "cid-test", tokens: { access: "carok", refresh: "r-ok", fresh: true } } },
+        { name: "carSetup", token: "none", car: { show: true } },
+        { name: "carNoSecret", token: "none", car: { show: true, clientId: "cid-test", secret: false } },
+        { name: "carConnect", token: "none", car: { show: true, clientId: "cid-test" } },
+        { name: "carPaste", token: "none", car: { show: true, clientId: "cid-test", paste: "http://localhost:8765/callback?code=GOODCODE&state=duxtibber&iss=https%3A%2F%2Fthewall.tibber.com" } },
+        { name: "carBadPaste", token: "none", car: { show: true, clientId: "cid-test", paste: "http://localhost:8765/callback?code=BADCODE&state=duxtibber" } },
+        { name: "carRefresh", token: "none", car: { show: true, clientId: "cid-test", tokens: { access: "old", refresh: "r-ok", fresh: false } } },
+        { name: "carRevoked", token: "none", car: { show: true, clientId: "cid-test", tokens: { access: "old", refresh: "r-revoked", fresh: false } } },
+        { name: "carSelect", token: "none", car: { show: true, clientId: "cid-test", name: "family CAR", tokens: { access: "carok", refresh: "r-ok", fresh: true } } },
+        { name: "carMiss", token: "none", car: { show: true, clientId: "cid-test", name: "tesla", tokens: { access: "carok", refresh: "r-ok", fresh: true } } }
     ]
     property int sceneIndex: -1
 
@@ -37,6 +48,24 @@ ShellRoot {
         path: Quickshell.env("XDG_CONFIG_HOME") + "/tibber/config.json"
         blockWrites: true
         printErrors: false
+    }
+
+    // The plugin's private token store for the car tile; each scene rewrites it.
+    FileView {
+        id: carFile
+        path: Quickshell.env("XDG_STATE_HOME") + "/duxtibber/car.json"
+        blockWrites: true
+        printErrors: false
+    }
+
+    // Simulates the user pasting the browser address into the settings.
+    Timer {
+        id: pasteTimer
+        interval: 600
+        onTriggered: {
+            SettingsData.setPluginSetting(shell.pid, "carRedirect", shell.scene.car.paste)
+            PluginService.pluginDataChanged(shell.pid)
+        }
     }
     property var widgets: []
     property var scene: null
@@ -63,7 +92,7 @@ ShellRoot {
 
     FloatingWindow {
         implicitWidth: 540
-        implicitHeight: 920
+        implicitHeight: 1240
         color: Theme.surface
         visible: true
 
@@ -158,6 +187,16 @@ ShellRoot {
         SettingsData.setPluginSetting(pid, "priceUnit", scene.minor ? "minor" : "major")
         SettingsData.setPluginSetting(pid, "showUnit", !scene.nounit)
         declaredFile.setText(JSON.stringify(scene.declared || {}))
+        const c = scene.car || {}
+        SettingsData.setPluginSetting(pid, "showCar", !!c.show)
+        SettingsData.setPluginSetting(pid, "carClientId", c.clientId || "")
+        SettingsData.setPluginSetting(pid, "carName", c.name || "")
+        SettingsData.setPluginSetting(pid, "carSecretFile", tokenDir + (c.secret === false ? "/nosecret" : "/carsecret"))
+        SettingsData.setPluginSetting(pid, "carRedirect", "")
+        const t = c.tokens
+        carFile.setText(JSON.stringify(t ? { scene: scene.name, access_token: t.access, refresh_token: t.refresh, expires_at: t.fresh ? Date.now() + 3600000 : 1 } : { scene: scene.name }))
+        if (c.paste)
+            pasteTimer.start()
         spawn()
         if (scene.twin)
             spawn()
@@ -174,7 +213,11 @@ ShellRoot {
         onTriggered: {
             tries++
             const st = shell.widgets[0].st
-            const done = st.nextAt > shell.swapFrom && st.fetching === 0
+            const car = shell.widgets[0].car
+            const c = shell.scene.car
+            // Fetch scenes wait for the car request; paste scenes for the exchange (and fetch); the others have nothing to wait for.
+            const carDone = !c || !c.show || (c.paste ? (car.busy === 0 && (car.data !== null || car.message !== "")) : (c.tokens ? (car.nextAt > 0 && car.fetching === 0) : true))
+            const done = st.nextAt > shell.swapFrom && st.fetching === 0 && carDone
             if (!done && tries < 50)
                 return
             if (shell.scene.swap && shell.swapFrom === 0) {
@@ -210,7 +253,9 @@ ShellRoot {
         })
         console.log("TIBBER " + scene.name + " pill=" + w.priceText + " level=" + (w.cur ? w.cur.level : "none")
             + " demo=" + w.st.demo + " error=" + JSON.stringify(w.st.error) + " model=" + (w.st.model ? w.st.model.prices.length : 0)
-            + " twinSame=" + (widgets.length > 1 ? (widgets[1].st.nextAt === w.st.nextAt) : "n/a"))
+            + " twinSame=" + (widgets.length > 1 ? (widgets[1].st.nextAt === w.st.nextAt) : "n/a")
+            + " carstate=" + w.carState + " car=" + (w.car.data ? w.car.data.brand + " " + w.car.data.name + "/" + w.car.data.soc + "/" + w.car.data.target + "/" + w.car.data.rangeKm : "none")
+            + " tok=" + (w.car.tokens ? w.car.tokens.refresh_token : "none") + " redirect=" + (w.carRedirect === "" ? "cleared" : "set") + " msg=" + (w.car.message || "-"))
         settle.start()
     }
 

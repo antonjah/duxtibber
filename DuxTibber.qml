@@ -50,7 +50,10 @@ PluginComponent {
         onFileChanged: reload()
     }
 
-    Component.onCompleted: readDeclared()
+    Component.onCompleted: {
+        readDeclared()
+        hydrateCar()
+    }
 
     // One shared state for every bar instance (one per screen) so only one request goes out.
     PluginGlobalVar {
@@ -180,10 +183,196 @@ PluginComponent {
             fetchTibber(token)
     }
 
+    // Optional car tile (Tibber Data API, OAuth). It fails quietly: prices never depend on it.
+    readonly property bool showCar: String(setting("showCar", false)) === "true"
+    readonly property string carName: String(setting("carName", ""))
+    readonly property string carClientId: String(setting("carClientId", "")).trim()
+    readonly property string carSecretFile: (String(setting("carSecretFile", "")) || (configHome + "/tibber/data-api-secret")).replace(/^~/, Quickshell.env("HOME"))
+    readonly property string carRedirect: String(setting("carRedirect", ""))
+    readonly property string dataApiUrl: pluginData.apiUrl ? pluginData.apiUrl.replace(/\/$/, "") : Tibber.DATA_HOST
+    readonly property string authApiUrl: pluginData.apiUrl ? pluginData.apiUrl.replace(/\/$/, "") : Tibber.AUTH_HOST
+    readonly property string carDir: (Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")) + "/duxtibber"
+    readonly property string carAuthUrl: carClientId ? Tibber.authUrl(carClientId, Tibber.CAR_STATE, authApiUrl) : ""
+    property bool carHasSecret: false
+
+    PluginGlobalVar {
+        id: carShared
+        varName: "car"
+        defaultValue: ({ data: null, found: [], tokens: null, revoked: false, fetched: false, error: "", message: "", loaded: false, nextAt: 0, fetching: 0, busy: 0 })
+    }
+
+    readonly property var car: carShared.value
+    readonly property string carState: Tibber.carStatus({
+        enabled: showCar, clientId: carClientId, hasSecret: carHasSecret, tokens: car.tokens, revoked: car.revoked,
+        car: car.data, found: car.found, name: carName, error: car.error, fetched: car.fetched
+    })
+
+    // Tokens live in a private (0700) folder of their own: plugin_settings.json is world-readable.
+    FileView {
+        id: carStore
+        path: root.carDir + "/car.json"
+        blockLoading: true
+        blockWrites: true
+        atomicWrites: true
+        printErrors: false
+    }
+
+    FileView {
+        id: secretView
+        path: root.carSecretFile
+        blockLoading: true
+        watchChanges: true
+        printErrors: false
+        onLoaded: root.carHasSecret = secretView.text().trim() !== ""
+        onLoadFailed: root.carHasSecret = false
+        onFileChanged: reload()
+    }
+
+    function setCar(patch) {
+        carShared.set(Object.assign({}, carShared.value, patch))
+    }
+
+    function readSecret() {
+        try {
+            return secretView.text().trim()
+        } catch (e) {
+            return ""
+        }
+    }
+
+    function hydrateCar() {
+        carHasSecret = readSecret() !== ""
+        if (carShared.value.loaded)
+            return
+        Quickshell.execDetached(["mkdir", "-m", "700", "-p", carDir])
+        let tokens = null
+        try {
+            tokens = JSON.parse(carStore.text())
+        } catch (e) {}
+        setCar({ loaded: true, tokens: tokens && tokens.refresh_token ? tokens : null })
+    }
+
+    function saveTokens(t) {
+        setCar({ tokens: t, revoked: false })
+        carStore.setText(JSON.stringify(t))
+    }
+
+    function disconnectCar() {
+        carStore.setText("")
+        setCar({ tokens: null, data: null, found: [], revoked: false, fetched: false, error: "", message: "", nextAt: 0 })
+    }
+
+    // The pasted browser address holds a one-time code; it is exchanged once and then removed from the settings.
+    onCarRedirectChanged: if (carRedirect !== "") exchangeCar()
+
+    function exchangeCar() {
+        hydrateCar()
+        if (carShared.value.busy && Date.now() - carShared.value.busy < 60000)
+            return
+        const finish = patch => {
+            setCar(Object.assign({ busy: 0 }, patch))
+            PluginService.savePluginData(pluginId, "carRedirect", "")
+        }
+        const r = Tibber.parseRedirect(carRedirect, Tibber.CAR_STATE)
+        if (r.error)
+            return finish({ message: r.error })
+        const secret = readSecret()
+        if (!carClientId || secret === "")
+            return finish({ message: I18n.trFor("duxTibber", "Enter the client ID and the secret file first") })
+        setCar({ busy: Date.now(), message: "" })
+        request("POST", authApiUrl + "/connect/token", { "Content-Type": "application/x-www-form-urlencoded" },
+            Tibber.tokenBody(carClientId, secret, { code: r.code }), (status, text) => {
+            const t = Tibber.tokensFrom(text, Date.now())
+            if (t.error)
+                return finish({ message: t.error })
+            saveTokens(t)
+            finish({ message: "", nextAt: 0, fetched: false, error: "" })
+            fetchCar()
+        })
+    }
+
+    // The refresh token rotates: the new one is stored before the old one is forgotten.
+    function refreshCarTokens(cb) {
+        request("POST", authApiUrl + "/connect/token", { "Content-Type": "application/x-www-form-urlencoded" },
+            Tibber.tokenBody(carClientId, readSecret(), { refresh: carShared.value.tokens.refresh_token }), (status, text) => {
+            const t = Tibber.tokensFrom(text, Date.now(), carShared.value.tokens)
+            if (t.error) {
+                setCar({ revoked: t.revoked, error: t.revoked ? "" : t.error })
+                return cb(null)
+            }
+            saveTokens(t)
+            cb(t)
+        })
+    }
+
+    function fetchCar() {
+        hydrateCar()
+        const s = carShared.value
+        if (!showCar || !s.tokens || s.revoked || !carClientId)
+            return
+        if (s.fetching && Date.now() - s.fetching < 60000)
+            return
+        const done = patch => setCar(Object.assign({ fetching: 0, nextAt: Date.now() + 5 * 60000 }, patch))
+        setCar({ fetching: Date.now() })
+
+        const run = (tokens, retried) => {
+            const headers = { "Authorization": "Bearer " + tokens.access_token }
+            const get = (path, cb) => request("GET", dataApiUrl + path, headers, null, (status, text) => {
+                let json = null
+                try {
+                    json = JSON.parse(text)
+                } catch (e) {}
+                cb(status === 200 ? json : null, status)
+            })
+
+            get("/v1/homes", (homes, status) => {
+                if (status === 401 && !retried)
+                    return refreshCarTokens(t => t ? run(t, true) : done({}))
+                if (!homes || !homes.homes || !homes.homes.length)
+                    return done({ data: null, found: [], fetched: true, error: status === 200 ? "" : httpError(status) })
+                const base = "/v1/homes/" + homes.homes[0].id + "/devices"
+                get(base, (list, status2) => {
+                    if (!list || !list.devices)
+                        return done({ data: null, found: [], fetched: true, error: httpError(status2) })
+                    const ids = list.devices.filter(d => d.info.brand !== "Tibber").map(d => d.id)
+                    const bodies = []
+                    const next = i => {
+                        if (i === ids.length) {
+                            const picked = Tibber.pickCar(bodies, carName)
+                            return done({ data: picked.car, found: picked.found, fetched: true, error: "" })
+                        }
+                        get(base + "/" + ids[i], d => {
+                            if (d)
+                                bodies.push(d)
+                            next(i + 1)
+                        })
+                    }
+                    next(0)
+                })
+            })
+        }
+
+        if (Tibber.needsRefresh(s.tokens, Date.now()))
+            refreshCarTokens(t => t ? run(t, false) : done({}))
+        else
+            run(s.tokens, false)
+    }
+
+    readonly property string carKey: showCar + "|" + carClientId + "|" + carName
+    onCarKeyChanged: {
+        setCar({ nextAt: 0 })
+        keyDebounce.restart()
+    }
+
     function refreshIfDue() {
         now = Date.now()
         if (now >= st.nextAt)
             refresh()
+        if (showCar) {
+            secretView.reload()
+            if (now >= car.nextAt)
+                fetchCar()
+        }
     }
 
     // Changing where prices come from should not wait for the next interval.

@@ -48,3 +48,17 @@ programs.dank-material-shell.settings.barConfigs = [{
 ```
 
 Rebuild, then enable the plugin once in Dux: Settings > Plugins > Scan > Tibber.
+
+## Car (optional)
+
+Shows your connected car's charge in the popup. Off by default.
+
+```nix
+programs.duxtibber.car = {
+  enable = true;
+  clientId = "...";   # from data-api.tibber.com/clients/manage
+  # name = "Enyaq";   # which car, if you have several
+};
+```
+
+Open the popup after rebuilding: it walks you through creating the Tibber API client and logging in once. The client secret goes in `~/.config/tibber/data-api-secret`.

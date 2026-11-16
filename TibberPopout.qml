@@ -310,6 +310,25 @@ PopoutComponent {
             }
         }
 
+        CarTile {
+            visible: popout.plugin.carState === "car"
+            width: parent.width
+            car: popout.plugin.car.data
+            onDisconnect: popout.plugin.disconnectCar()
+        }
+
+        CarSetup {
+            visible: ["setup", "connect", "reconnect", "notfound", "nocar", "error", "loading"].indexOf(popout.plugin.carState) >= 0
+            width: parent.width
+            mode: popout.plugin.carState
+            authUrl: popout.plugin.carAuthUrl
+            message: popout.plugin.car.message
+            error: popout.plugin.car.error
+            carName: popout.plugin.carName
+            found: popout.plugin.car.found
+            secretFile: popout.plugin.carSecretFile
+        }
+
         StyledText {
             visible: popout.st.updatedAt > 0
             width: parent.width
